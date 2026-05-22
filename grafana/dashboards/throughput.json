@@ -1,0 +1,11 @@
+{
+  "title": "Throughput Dashboard",
+  "uid": "throughput-dash",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Requests Per Minute",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 }
+    }
+  ]
+}
