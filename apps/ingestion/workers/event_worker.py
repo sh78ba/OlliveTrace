@@ -68,6 +68,18 @@ class ConversationEventConsumer:
                         WHERE session_id = $1
                     """, event.session_id)
                     
+                    if event.user_message:
+                        await conn.execute("""
+                            INSERT INTO messages (conversation_id, turn_id, role, content)
+                            SELECT id, $2, 'user', $3 FROM conversations WHERE session_id = $1
+                        """, event.session_id, event.turn_id, event.user_message)
+                        
+                    if event.assistant_message:
+                        await conn.execute("""
+                            INSERT INTO messages (conversation_id, turn_id, role, content)
+                            SELECT id, $2, 'assistant', $3 FROM conversations WHERE session_id = $1
+                        """, event.session_id, event.turn_id, event.assistant_message)
+                    
                 elif event.type == 'session.cancelled':
                     await conn.execute("""
                         UPDATE conversations 

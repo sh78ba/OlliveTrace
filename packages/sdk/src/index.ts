@@ -95,7 +95,9 @@ export class LLMClient {
           self.emitEvent({
             type: 'turn.completed',
             session_id: self.options.sessionId,
-            turn_id: turnId
+            turn_id: turnId,
+            user_message: messages[messages.length - 1]?.content || '',
+            assistant_message: responseContent
           });
         }
         
@@ -130,7 +132,9 @@ export class LLMClient {
         this.emitEvent({
           type: 'turn.completed',
           session_id: this.options.sessionId,
-          turn_id: turnId
+          turn_id: turnId,
+          user_message: messages[messages.length - 1]?.content || '',
+          assistant_message: responseContent
         });
         
         return responseContent;

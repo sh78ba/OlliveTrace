@@ -53,6 +53,18 @@ async def get_conversations():
         rows = await conn.fetch("SELECT session_id as id, title, status, turn_count as messages, created_at FROM conversations ORDER BY created_at DESC LIMIT 50")
         return [dict(r) for r in rows]
 
+@app.get("/conversations/{session_id}/messages")
+async def get_conversation_messages(session_id: str):
+    async with app.state.pg_pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT m.role, m.content 
+            FROM messages m
+            JOIN conversations c ON m.conversation_id = c.id
+            WHERE c.session_id = $1
+            ORDER BY m.created_at ASC
+        """, session_id)
+        return [{"role": r['role'], "content": r['content']} for r in rows]
+
 @app.get("/metrics/dashboard")
 async def get_dashboard_metrics():
     client = app.state.ch_client

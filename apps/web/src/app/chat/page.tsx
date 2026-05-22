@@ -11,7 +11,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<{role: string, content: string, latency?: number, tokens?: number}[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
-  const [sessionId] = useState(() => uuidv4());
+  const [sessionId, setSessionId] = useState<string>('');
   const abortControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -20,12 +20,30 @@ export default function ChatPage() {
   };
 
   useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const sid = urlParams.get('sessionId');
+    if (sid) {
+      setSessionId(sid);
+      fetch(`${process.env.NEXT_PUBLIC_INGEST_URL || 'http://localhost:8000'}/conversations/${sid}/messages`)
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data) && data.length > 0) {
+            setMessages(data.map(m => ({ role: m.role, content: m.content })));
+          }
+        })
+        .catch(console.error);
+    } else {
+      setSessionId(uuidv4());
+    }
+  }, []);
+
+  useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isStreaming) return;
+    if (!input.trim() || isStreaming || !sessionId) return;
 
     const newMessages = [...messages, { role: 'user', content: input }];
     setMessages(newMessages);
