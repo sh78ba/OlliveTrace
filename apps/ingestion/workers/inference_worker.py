@@ -3,6 +3,7 @@ import json
 import os
 import redis.asyncio as redis
 import clickhouse_connect
+from redis.exceptions import ResponseError
 from datetime import datetime, timezone
 from schemas import InferenceLogSchema
 from pydantic import ValidationError
@@ -28,7 +29,7 @@ class InferenceLogConsumer:
     async def init_group(self):
         try:
             await self.redis.xgroup_create(self.stream, self.group, id="0", mkstream=True)
-        except redis.exceptions.ResponseError as e:
+        except ResponseError as e:
             if "BUSYGROUP" not in str(e):
                 raise
 

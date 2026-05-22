@@ -22,4 +22,4 @@ CREATE TABLE IF NOT EXISTS inference_logs (
 ) ENGINE = MergeTree()
   PARTITION BY toYYYYMMDD(logged_at)
   ORDER BY (logged_at, provider, model)
-  TTL logged_at + INTERVAL 90 DAY;
+  TTL toDateTime(logged_at) + INTERVAL 90 DAY;

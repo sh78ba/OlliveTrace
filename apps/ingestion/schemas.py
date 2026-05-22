@@ -38,4 +38,5 @@ class ConversationEventSchema(BaseModel):
     model: Optional[str] = None
     provider: Optional[str] = None
     turn_id: Optional[UUID] = None
+    title: Optional[str] = None
     cancelled_at: Optional[datetime] = None

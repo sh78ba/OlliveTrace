@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 export default function ChatPage() {
@@ -58,7 +58,7 @@ export default function ChatPage() {
         if (done) break;
 
         const chunk = decoder.decode(value);
-        const lines = chunk.split('\\n\\n');
+        const lines = chunk.split('\n\n');
         
         for (const line of lines) {
           if (line.startsWith('data: ')) {
@@ -84,14 +84,14 @@ export default function ChatPage() {
                   return newMsgs;
                 });
               }
-            } catch (e) {
+            } catch {
               // Ignore parse errors on incomplete chunks
             }
           }
         }
       }
-    } catch (err: any) {
-      if (err.name !== 'AbortError') {
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name !== 'AbortError') {
         console.error('Chat error:', err);
       }
     } finally {

@@ -1,5 +1,8 @@
 import { Redis } from 'ioredis';
 import { v4 as uuidv4 } from 'uuid';
+import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { PiiRedactor } from './redactor';
 import { ChatMessage, ChatOptions, InferenceLog, LLMClientOptions, Provider } from './types';
 
@@ -41,8 +44,9 @@ export class LLMClient {
         this.emitEvent({
           type: 'session.started',
           session_id: this.options.sessionId,
-          model: options.model || 'unknown',
-          provider: currentProvider
+          model: options.model || 'gpt-3.5-turbo',
+          provider: currentProvider,
+          title: messages.find(m => m.role === 'user')?.content.substring(0, 80) || 'New Conversation'
         });
       }
 
@@ -75,13 +79,13 @@ export class LLMClient {
             session_id: self.options.sessionId,
             turn_id: turnId,
             provider: currentProvider,
-            model: options.model || 'unknown',
+            model: options.model || 'gpt-3.5-turbo',
             status: 'success',
             ttfb_ms: ttfb,
             total_latency_ms: totalLatency,
             prompt_tokens: promptTokens,
             completion_tokens: completionTokens,
-            estimated_cost_usd: self.calculateCost(options.model || 'unknown', promptTokens, completionTokens),
+            estimated_cost_usd: self.calculateCost(options.model || 'gpt-3.5-turbo', promptTokens, completionTokens),
             input_preview: redactedInput.redacted,
             output_preview: redactedOutput.redacted,
             logged_at: new Date().toISOString(),
@@ -110,13 +114,13 @@ export class LLMClient {
           session_id: this.options.sessionId,
           turn_id: turnId,
           provider: currentProvider,
-          model: options.model || 'unknown',
+          model: options.model || 'gpt-3.5-turbo',
           status: 'success',
           ttfb_ms: ttfb,
           total_latency_ms: totalLatency,
           prompt_tokens: promptTokens,
           completion_tokens: completionTokens,
-          estimated_cost_usd: this.calculateCost(options.model || 'unknown', promptTokens, completionTokens),
+          estimated_cost_usd: this.calculateCost(options.model || 'gpt-3.5-turbo', promptTokens, completionTokens),
           input_preview: redactedInput.redacted,
           output_preview: redactedOutput.redacted,
           logged_at: new Date().toISOString(),
@@ -138,7 +142,7 @@ export class LLMClient {
           session_id: this.options.sessionId,
           turn_id: turnId,
           provider: currentProvider,
-          model: options.model || 'unknown',
+          model: options.model || 'gpt-3.5-turbo',
           status: 'error',
           ttfb_ms: 0,
           total_latency_ms: Date.now() - startTime,
@@ -177,22 +181,74 @@ export class LLMClient {
   }
 
   private async executeChat(messages: ChatMessage[], options: ChatOptions, provider: Provider): Promise<string> {
-    // Mock implementation for demo purposes
-    return "This is a mock response from " + provider;
+    let response = '';
+    const stream = this.executeChatStream(messages, options, provider);
+    for await (const chunk of stream) {
+      response += chunk;
+    }
+    return response;
   }
 
   private async *executeChatStream(messages: ChatMessage[], options: ChatOptions, provider: Provider): AsyncGenerator<string, void, unknown> {
-    const mockWords = ["Here", " is", " a", " simulated", " streaming", " response", " from", " ", provider, "."];
-    for (const word of mockWords) {
-      await new Promise(resolve => setTimeout(resolve, 50));
-      // check cancel key logic if needed
-      yield word;
+    const model = options.model || 'gpt-3.5-turbo';
+    
+    if (provider === 'openai') {
+      if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not set.");
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const stream = await openai.chat.completions.create({
+        model,
+        messages: messages as any,
+        stream: true,
+      });
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content || '';
+        if (content) yield content;
+      }
+    } else if (provider === 'anthropic') {
+      if (!process.env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not set.");
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const systemMessage = messages.find(m => m.role === 'system')?.content;
+      const userMessages = messages.filter(m => m.role !== 'system').map(m => ({
+        role: m.role === 'user' ? 'user' : 'assistant',
+        content: m.content
+      }));
+      
+      const stream = await anthropic.messages.create({
+        model,
+        max_tokens: 1024,
+        system: systemMessage,
+        messages: userMessages as any,
+        stream: true,
+      });
+      
+      for await (const chunk of stream) {
+        if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+          yield chunk.delta.text;
+        }
+      }
+    } else if (provider === 'google') {
+      if (!process.env.GOOGLE_API_KEY) throw new Error("GOOGLE_API_KEY is not set.");
+      const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+      const genModel = genAI.getGenerativeModel({ model });
+      const history = messages.slice(0, -1).filter(m => m.role !== 'system').map(m => ({
+        role: m.role === 'user' ? 'user' : 'model',
+        parts: [{ text: m.content }]
+      }));
+      const latestMsg = messages[messages.length - 1].content;
+      
+      const chat = genModel.startChat({ history });
+      const result = await chat.sendMessageStream(latestMsg);
+      for await (const chunk of result.stream) {
+        yield chunk.text();
+      }
+    } else {
+      throw new Error(`Provider ${provider} not implemented for streaming.`);
     }
   }
 
   private logInference(log: InferenceLog) {
     if (!this.redis) return;
-    this.redis.xadd('inference:logged', '*', 'payload', JSON.stringify(log)).catch(e => {
+    this.redis.xadd('inference:logged', '*', 'payload', JSON.stringify(log)).catch((e: any) => {
       console.error('Failed to log inference', e);
       // write to in-memory buffer or localStorage
     });
@@ -200,7 +256,7 @@ export class LLMClient {
 
   private emitEvent(event: any) {
     if (!this.redis) return;
-    this.redis.xadd('conversation:events', '*', 'payload', JSON.stringify(event)).catch(e => {
+    this.redis.xadd('conversation:events', '*', 'payload', JSON.stringify(event)).catch((e: any) => {
       console.error('Failed to emit event', e);
     });
   }

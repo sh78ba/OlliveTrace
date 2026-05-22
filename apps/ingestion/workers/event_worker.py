@@ -3,6 +3,7 @@ import json
 import os
 import redis.asyncio as redis
 import asyncpg
+from redis.exceptions import ResponseError
 from schemas import ConversationEventSchema
 from pydantic import ValidationError
 
@@ -18,7 +19,7 @@ class ConversationEventConsumer:
     async def init_group(self):
         try:
             await self.redis.xgroup_create(self.stream, self.group, id="0", mkstream=True)
-        except redis.exceptions.ResponseError as e:
+        except ResponseError as e:
             if "BUSYGROUP" not in str(e):
                 raise
 
@@ -55,10 +56,10 @@ class ConversationEventConsumer:
             async with self.pool.acquire() as conn:
                 if event.type == 'session.started':
                     await conn.execute("""
-                        INSERT INTO conversations (session_id, model, provider)
-                        VALUES ($1, $2, $3)
+                        INSERT INTO conversations (session_id, model, provider, title)
+                        VALUES ($1, $2, $3, $4)
                         ON CONFLICT (session_id) DO NOTHING
-                    """, event.session_id, event.model, event.provider)
+                    """, event.session_id, event.model, event.provider, event.title)
                     
                 elif event.type == 'turn.completed':
                     await conn.execute("""

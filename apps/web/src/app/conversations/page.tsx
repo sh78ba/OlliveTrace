@@ -1,21 +1,37 @@
 'use client';
 
-import { useState } from 'react';
-import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { useRouter } from 'next/navigation';
 
-// Mock data
-const initialConversations = [
-  { id: 'sess-1a2b3c', title: 'How to configure Redis Streams?', status: 'active', messages: 4, created_at: '2026-05-22T10:00:00Z' },
-  { id: 'sess-4d5e6f', title: 'Write a python script to parse CSV', status: 'completed', messages: 12, created_at: '2026-05-22T09:15:00Z' },
-  { id: 'sess-7g8h9i', title: 'What is the capital of France?', status: 'cancelled', messages: 2, created_at: '2026-05-21T18:30:00Z' },
-];
+interface Conversation {
+  id: string;
+  title: string;
+  status: string;
+  messages: number;
+  created_at: string;
+}
 
 export default function ConversationsPage() {
-  const [conversations, setConversations] = useState(initialConversations);
+  const router = useRouter();
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`${process.env.NEXT_PUBLIC_INGEST_URL || 'http://localhost:8000'}/conversations`)
+      .then(res => res.json())
+      .then(json => {
+        setConversations(json);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error("Failed to fetch conversations", err);
+        setLoading(false);
+      });
+  }, []);
 
   const handleCancel = async (id: string) => {
     // In real app, call DELETE /api/sessions/{id}/cancel
@@ -35,8 +51,8 @@ export default function ConversationsPage() {
     <div className="p-8 max-w-6xl mx-auto space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold tracking-tight">Conversations</h1>
-        <Button asChild className="bg-emerald-600 hover:bg-emerald-500">
-          <Link href="/chat">New Chat</Link>
+        <Button onClick={() => router.push('/chat')} className="bg-emerald-600 hover:bg-emerald-500">
+          New Chat
         </Button>
       </div>
 
@@ -53,10 +69,18 @@ export default function ConversationsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {conversations.map((conv) => (
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center py-8 text-zinc-400">Loading conversations...</TableCell>
+              </TableRow>
+            ) : conversations.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center py-8 text-zinc-400">No conversations found.</TableCell>
+              </TableRow>
+            ) : conversations.map((conv) => (
               <TableRow key={conv.id} className="border-zinc-800 hover:bg-zinc-800/50">
                 <TableCell className="font-mono text-xs text-zinc-400">{conv.id}</TableCell>
-                <TableCell className="font-medium max-w-xs truncate">{conv.title}</TableCell>
+                <TableCell className="font-medium max-w-xs truncate">{conv.title || 'New Conversation'}</TableCell>
                 <TableCell>
                   <Badge variant="outline" className={getStatusColor(conv.status)}>
                     {conv.status}
@@ -67,8 +91,8 @@ export default function ConversationsPage() {
                   {new Date(conv.created_at).toLocaleString()}
                 </TableCell>
                 <TableCell className="text-right space-x-2">
-                  <Button asChild variant="outline" size="sm" className="bg-transparent border-zinc-700 hover:bg-zinc-800">
-                    <Link href={`/chat?sessionId=${conv.id}`}>Resume</Link>
+                  <Button onClick={() => router.push(`/chat?sessionId=${conv.id}`)} variant="outline" size="sm" className="bg-transparent border-zinc-700 hover:bg-zinc-800">
+                    Resume
                   </Button>
                   {conv.status === 'active' && (
                     <Button variant="destructive" size="sm" onClick={() => handleCancel(conv.id)}>

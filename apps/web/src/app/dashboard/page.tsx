@@ -1,28 +1,44 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-// Mock Data
-const rpmData = [
-  { time: '10:00', count: 40 }, { time: '10:05', count: 65 },
-  { time: '10:10', count: 85 }, { time: '10:15', count: 120 },
-  { time: '10:20', count: 90 }, { time: '10:25', count: 150 },
-];
-
-const latencyData = [
-  { name: 'claude-3.5-sonnet', avg_ms: 600 },
-  { name: 'gpt-4o', avg_ms: 450 },
-  { name: 'gemini-1.5-pro', avg_ms: 550 },
-];
-
-const errorData = [
-  { name: 'Success (200)', value: 850, color: '#10b981' },
-  { name: 'Rate Limit (429)', value: 30, color: '#f59e0b' },
-  { name: 'Timeout (504)', value: 15, color: '#ef4444' },
-];
+interface DashboardData {
+  summary: {
+    avg_ms: number;
+    p95_ms: number;
+    total_requests: number;
+    error_rate: number;
+  };
+  rpmData: { time: string; count: number }[];
+  latencyData: { name: string; avg_ms: number }[];
+  errorData: { name: string; value: number; color: string }[];
+  error?: string;
+}
 
 export default function DashboardPage() {
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`${process.env.NEXT_PUBLIC_INGEST_URL || 'http://localhost:8000'}/metrics/dashboard`)
+      .then(res => res.json())
+      .then(json => {
+        setData(json);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error("Failed to fetch dashboard metrics", err);
+        setLoading(false);
+      });
+  }, []);
+
+  if (loading) return <div className="p-8 text-center text-zinc-400">Loading metrics...</div>;
+  if (!data || data.error) return <div className="p-8 text-center text-red-400">Error loading metrics. Is the FastAPI ingestion service running?</div>;
+
+  const { summary, rpmData, latencyData, errorData } = data;
+
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8">
       <h1 className="text-3xl font-bold tracking-tight">Observability</h1>
@@ -31,19 +47,19 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card className="bg-zinc-900/50 border-zinc-800">
           <CardHeader className="pb-2"><CardTitle className="text-sm text-zinc-400">Avg Latency</CardTitle></CardHeader>
-          <CardContent><div className="text-3xl font-bold text-emerald-400">530ms</div></CardContent>
+          <CardContent><div className="text-3xl font-bold text-emerald-400">{summary.avg_ms}ms</div></CardContent>
         </Card>
         <Card className="bg-zinc-900/50 border-zinc-800">
           <CardHeader className="pb-2"><CardTitle className="text-sm text-zinc-400">p95 Latency</CardTitle></CardHeader>
-          <CardContent><div className="text-3xl font-bold text-amber-400">1,200ms</div></CardContent>
+          <CardContent><div className="text-3xl font-bold text-amber-400">{summary.p95_ms}ms</div></CardContent>
         </Card>
         <Card className="bg-zinc-900/50 border-zinc-800">
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-zinc-400">Total Requests (Today)</CardTitle></CardHeader>
-          <CardContent><div className="text-3xl font-bold text-white">4,289</div></CardContent>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-zinc-400">Total Requests</CardTitle></CardHeader>
+          <CardContent><div className="text-3xl font-bold text-white">{summary.total_requests}</div></CardContent>
         </Card>
         <Card className="bg-zinc-900/50 border-zinc-800">
           <CardHeader className="pb-2"><CardTitle className="text-sm text-zinc-400">Error Rate</CardTitle></CardHeader>
-          <CardContent><div className="text-3xl font-bold text-red-400">1.2%</div></CardContent>
+          <CardContent><div className="text-3xl font-bold text-red-400">{summary.error_rate}%</div></CardContent>
         </Card>
       </div>
 
@@ -80,7 +96,7 @@ export default function DashboardPage() {
           <ResponsiveContainer width="100%" height="85%">
             <PieChart>
               <Pie data={errorData} innerRadius={80} outerRadius={120} paddingAngle={5} dataKey="value">
-                {errorData.map((entry, index) => (
+                {errorData.map((entry: { color: string }, index: number) => (
                   <Cell key={`cell-${index}`} fill={entry.color} />
                 ))}
               </Pie>
